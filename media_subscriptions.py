@@ -14,6 +14,11 @@ import xdg.BaseDirectory
 APP_NAME = 'media-subscriptions'
 
 
+class YoutubeDLError(Exception):
+    def __init__(self, code):
+        super().__init__('youtube-dl exited with code {}'.format(code))
+        self.code = code
+
 class SubscriptionDownloader(youtube_dl.YoutubeDL):
     def __init__(self, name, config):
         self.name = name
@@ -56,9 +61,9 @@ class SubscriptionDownloader(youtube_dl.YoutubeDL):
         with unittest.mock.patch('sys.argv', ['youtube-dl'] + args):
             try:
                 youtube_dl.main()
-            except SystemExit:
-                # TODO: correctly handle errors
-                pass
+            except SystemExit as err:
+                if err.code != 0:
+                    raise YoutubeDLError(err.code)
         register_last_download(self.name, entry['url'])
 
 
