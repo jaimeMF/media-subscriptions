@@ -22,8 +22,10 @@ wheel: $(DISTFILES)
 clean:
 	rm -rf $(DOCS) build dist ./*.egg-info
 
-%.1: %.rst
+.SUFFIXES: .rst .html .1
+
+.rst.1:
 	rst2man.py $(RST_OPTIONS) $< $@
 
-%.html: %.rst
+.rst.html:
 	rst2html.py $(RST_OPTIONS) $< | sed 's:\.rst:\.html:g' > $@
