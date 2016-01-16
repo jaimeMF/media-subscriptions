@@ -12,12 +12,14 @@ import xdg.BaseDirectory
 
 
 APP_NAME = 'media-subscriptions'
+lasts_filename = os.path.join(xdg.BaseDirectory.xdg_data_home, APP_NAME, 'last.json')
 
 
 class YoutubeDLError(Exception):
     def __init__(self, code):
         super().__init__('youtube-dl exited with code {}'.format(code))
         self.code = code
+
 
 class SubscriptionDownloader(youtube_dl.YoutubeDL):
     def __init__(self, name, config):
@@ -50,12 +52,7 @@ class SubscriptionDownloader(youtube_dl.YoutubeDL):
         for entry in entries:
             self.download_entry(entry)
 
-    def download_entry(self, entry):
-        args = []
-        args.extend(['--output', os.path.join(self.config['download-folder'], self.name, youtube_dl.utils.DEFAULT_OUTTMPL)])
-        extra_args = shlex.split(self.config['extra-args'])
-        args.extend(extra_args)
-        args.extend(['--', entry['url']])
+    def run_youtube_dl(self, args):
         # this is the only way to use the youtube-dl config file, if you
         # directly pass the args to youtube_dl.main it doesn't read it
         with unittest.mock.patch('sys.argv', ['youtube-dl'] + args):
@@ -64,23 +61,29 @@ class SubscriptionDownloader(youtube_dl.YoutubeDL):
             except SystemExit as err:
                 if err.code != 0:
                     raise YoutubeDLError(err.code)
+
+    def download_entry(self, entry):
+        args = []
+        args.extend(['--output', os.path.join(self.config['download-folder'], self.name, youtube_dl.utils.DEFAULT_OUTTMPL)])
+        extra_args = shlex.split(self.config['extra-args'])
+        args.extend(extra_args)
+        args.extend(['--', entry['url']])
+        self.run_youtube_dl(args)
         register_last_download(self.name, entry['url'])
 
 
 def load_last_downloads():
-    filename = os.path.join(next(xdg.BaseDirectory.load_data_paths(APP_NAME)), 'last.json')
-    if os.path.exists(filename):
-        with open(filename, 'rt') as f:
+    if os.path.exists(lasts_filename):
+        with open(lasts_filename, 'rt') as f:
             return json.load(f)
     else:
         return {}
 
 
 def register_last_download(name, url):
-    filename = os.path.join(xdg.BaseDirectory.save_data_path(APP_NAME), 'last.json')
     info = load_last_downloads()
     info[name] = url
-    with open(filename, 'wt') as f:
+    with open(lasts_filename, 'wt') as f:
         json.dump(info, f)
 
 
@@ -90,14 +93,18 @@ def process_subscription(name, config):
     dl.download_subscription()
 
 
-def main():
-    config_filename = os.path.join(xdg.BaseDirectory.load_first_config(APP_NAME), 'config')
-
+def build_config():
     defaults = {
         'download-folder': os.path.expanduser('~/Movies/subscriptions'),
         'extra-args': '',
     }
-    config = configparser.ConfigParser(defaults=defaults)
+    return configparser.ConfigParser(defaults=defaults)
+
+
+def main():
+    config_filename = os.path.join(xdg.BaseDirectory.load_first_config(APP_NAME), 'config')
+
+    config = build_config()
     config.read(config_filename)
     for name in config:
         if name == 'DEFAULT':
