@@ -3,5 +3,9 @@ build
 dist
 *.egg-info
 
+.tox
+.coverage
+cover
+
 *.html
 *.1
