@@ -28,40 +28,54 @@ class TestMediaSubs(unittest.TestCase):
         if os.path.exists(lasts_filename):
             os.remove(lasts_filename)
 
+        self.config = ms.build_config()
+        self.config.add_section('test')
+
+        self.dl = ms.SubscriptionDownloader(self.config)
+        self.dl.lasts_filename = lasts_filename
+        self.dl.add_info_extractor(PlaylistIE())
+        self.dl.run_youtube_dl = mock.Mock()
+        self.dl_mock = self.dl.download_entry = mock.Mock(side_effect=self.dl.download_entry)
+
     def tearDown(self):
         if os.path.exists(lasts_filename):
             os.remove(lasts_filename)
 
+    def download_subs(self, *ns):
+        self.config['test']['url'] = 'pl:{}'.format(','.join(map(str, ns)))
+        self.dl.download_subscription('test')
+
+    def entry(self, n):
+        return 'test', {'url': 't:{}'.format(n)}, self.config['test']
+
+    def call_entry(self, n):
+        return mock.call(*self.entry(n))
+
     def test_subscriptions(self):
-        config = ms.build_config()
-        config.add_section('test')
-        dl = ms.SubscriptionDownloader(config)
-        dl.lasts_filename = lasts_filename
-        dl.add_info_extractor(PlaylistIE())
-
-        def download_subs(*ns):
-            config['test']['url'] = 'pl:{}'.format(','.join(map(str, ns)))
-            dl.download_subscription('test')
-
-        dl.run_youtube_dl = mock.Mock()
-        dl_mock = dl.download_entry = mock.Mock(side_effect=dl.download_entry)
-
-        def entry(n):
-            return 'test', {'url': 't:{}'.format(n)}, config['test']
-
-        def call_entry(n):
-            return mock.call(*entry(n))
-
-        download_subs(1)
+        entry = self.entry
+        call_entry = self.call_entry
+        dl_mock = self.dl_mock
+        self.download_subs(1)
         dl_mock.assert_called_with(*entry(1))
 
         dl_mock.reset_mock()
-        download_subs(1)
+        self.download_subs(1)
         dl_mock.assert_not_called()
 
         dl_mock.reset_mock()
-        download_subs(1, 2, 3)
+        self.download_subs(1, 2, 3)
         dl_mock.assert_has_calls([call_entry(2), call_entry(3)])
+
+    def test_first_time(self):
+        '''Test first time download
+
+        It must only download the most recent video
+        '''
+
+        entry = self.entry
+        dl_mock = self.dl_mock
+        self.download_subs(1, 2, 3, 4)
+        dl_mock.assert_called_once_with(*entry(4))
 
 
 if __name__ == '__main__':
