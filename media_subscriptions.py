@@ -1,8 +1,10 @@
 import configparser
+import datetime
 import itertools
 import json
 import os
 import shlex
+import sqlite3
 import unittest.mock
 
 import youtube_dl
@@ -23,10 +25,30 @@ class YoutubeDLError(Exception):
 class SubscriptionDownloader(youtube_dl.YoutubeDL):
     def __init__(self, config):
         self.config = config
-        self.lasts_filename = os.path.join(xdg.BaseDirectory.xdg_data_home, APP_NAME, 'last.json')
+        self.db_filename = os.path.join(xdg.BaseDirectory.xdg_data_home, APP_NAME, 'media-subscriptions.db')
+        self._db = None
+        self.lasts_filename = os.path.join(os.path.dirname(self.db_filename), 'last.json')
         super().__init__({}, auto_init=False)
 
         self.add_info_extractor(ydl_ies.YoutubeUserIE())
+
+    @property
+    def db(self):
+        db = self._db
+        if self._db is None:
+            db = self._db = sqlite3.connect(self.db_filename)
+            if not db.execute('SELECT * FROM sqlite_master WHERE name="downloaded"').fetchall():
+                with db:
+                    db.execute('CREATE TABLE downloaded (subscription text, url text, date timestamp)')
+                if os.path.exists(self.lasts_filename):
+                    print('Migrating the json info to the sqlite database')
+                    with open(self.lasts_filename, 'rt') as f:
+                        info = json.load(f)
+                    with db:
+                        for name, url in info.items():
+                            self.register_download(name, url)
+                    os.rename(self.lasts_filename, self.lasts_filename + '.backup')
+        return db
 
     def process_ie_result(self, ie_result, download=True, extra_info={}):
         result_type = ie_result.get('_type', 'video')
@@ -37,12 +59,12 @@ class SubscriptionDownloader(youtube_dl.YoutubeDL):
 
     def extract_entries(self, name, config):
         all_entries = self.extract_info(config['url'])['entries']
-        last_download = self.load_last_downloads().get(name)
+        last_download = self.db.execute('SELECT * FROM downloaded WHERE subscription=? LIMIT 1', (name,)).fetchone()
         if last_download is None:
             print('Last download from subscription "{}" not found, downloading only the most recent video'.format(name))
             entries = [next(all_entries)]
         else:
-            entries = list(itertools.takewhile(lambda x: x['url'] != last_download, all_entries))[::-1]
+            entries = list(itertools.takewhile(lambda x: not self.is_downloaded(name, x['url']), all_entries))[::-1]
             print('Downloading {} videos'.format(len(entries)))
         return entries
 
@@ -70,20 +92,15 @@ class SubscriptionDownloader(youtube_dl.YoutubeDL):
         args.extend(extra_args)
         args.extend(['--', entry['url']])
         self.run_youtube_dl(args)
-        self.register_last_download(name, entry['url'])
+        self.register_download(name, entry['url'])
 
-    def load_last_downloads(self):
-        if os.path.exists(self.lasts_filename):
-            with open(self.lasts_filename, 'rt') as f:
-                return json.load(f)
-        else:
-            return {}
+    def is_downloaded(self, name, url):
+        res = self.db.execute('SELECT * FROM downloaded WHERE subscription=? AND url=?', (name, url))
+        return res.fetchone() is not None
 
-    def register_last_download(self, name, url):
-        info = self.load_last_downloads()
-        info[name] = url
-        with open(self.lasts_filename, 'wt') as f:
-            json.dump(info, f)
+    def register_download(self, name, url):
+        with self.db as db:
+            db.execute('INSERT INTO downloaded VALUES (?, ?, ?)', (name, url, datetime.datetime.now()))
 
 
 def build_config():

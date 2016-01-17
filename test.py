@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import unittest
@@ -21,25 +22,32 @@ class PlaylistIE(InfoExtractor):
 
 
 lasts_filename = 'test_lasts.json'
+db_filename = 'test_db.db'
+db_filename = ':memory:'
+
+test_files = [lasts_filename, lasts_filename + '.backup']
 
 
 class TestMediaSubs(unittest.TestCase):
     def setUp(self):
-        if os.path.exists(lasts_filename):
-            os.remove(lasts_filename)
+        for f in test_files:
+            if os.path.exists(f):
+                os.remove(f)
 
         self.config = ms.build_config()
         self.config.add_section('test')
 
         self.dl = ms.SubscriptionDownloader(self.config)
+        self.dl.db_filename = db_filename
         self.dl.lasts_filename = lasts_filename
         self.dl.add_info_extractor(PlaylistIE())
         self.dl.run_youtube_dl = mock.Mock()
         self.dl_mock = self.dl.download_entry = mock.Mock(side_effect=self.dl.download_entry)
 
     def tearDown(self):
-        if os.path.exists(lasts_filename):
-            os.remove(lasts_filename)
+        for f in test_files:
+            if os.path.exists(f):
+                os.remove(f)
 
     def download_subs(self, *ns):
         self.config['test']['url'] = 'pl:{}'.format(','.join(map(str, ns)))
@@ -75,6 +83,16 @@ class TestMediaSubs(unittest.TestCase):
         entry = self.entry
         dl_mock = self.dl_mock
         self.download_subs(1, 2, 3, 4)
+        dl_mock.assert_called_once_with(*entry(4))
+
+    def test_json_migration(self):
+        """Test json to sqlite database migration"""
+        with open(lasts_filename, 'wt') as f:
+            json.dump({'test': 't:3'}, f)
+
+        entry = self.entry
+        dl_mock = self.dl_mock
+        self.download_subs(2, 3, 4)
         dl_mock.assert_called_once_with(*entry(4))
 
 
