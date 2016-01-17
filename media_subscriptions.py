@@ -12,7 +12,6 @@ import xdg.BaseDirectory
 
 
 APP_NAME = 'media-subscriptions'
-lasts_filename = os.path.join(xdg.BaseDirectory.xdg_data_home, APP_NAME, 'last.json')
 
 
 class YoutubeDLError(Exception):
@@ -22,9 +21,9 @@ class YoutubeDLError(Exception):
 
 
 class SubscriptionDownloader(youtube_dl.YoutubeDL):
-    def __init__(self, name, config):
-        self.name = name
+    def __init__(self, config):
         self.config = config
+        self.lasts_filename = os.path.join(xdg.BaseDirectory.xdg_data_home, APP_NAME, 'last.json')
         super().__init__({}, auto_init=False)
 
         self.add_info_extractor(ydl_ies.YoutubeUserIE())
@@ -36,21 +35,23 @@ class SubscriptionDownloader(youtube_dl.YoutubeDL):
         elif result_type == 'url':
             return super().process_ie_result(ie_result, download, extra_info)
 
-    def extract_entries(self):
-        all_entries = self.extract_info(self.config['url'])['entries']
-        last_download = load_last_downloads().get(self.name)
+    def extract_entries(self, name, config):
+        all_entries = self.extract_info(config['url'])['entries']
+        last_download = self.load_last_downloads().get(name)
         if last_download is None:
-            print('Last download from subscription "{}" not found, downloading only the most recent video'.format(self.name))
+            print('Last download from subscription "{}" not found, downloading only the most recent video'.format(name))
             entries = [next(all_entries)]
         else:
             entries = list(itertools.takewhile(lambda x: x['url'] != last_download, all_entries))[::-1]
             print('Downloading {} videos'.format(len(entries)))
         return entries
 
-    def download_subscription(self):
-        entries = self.extract_entries()
+    def download_subscription(self, name):
+        print('Processing subscription "{}"'.format(name))
+        config = self.config[name]
+        entries = self.extract_entries(name, config)
         for entry in entries:
-            self.download_entry(entry)
+            self.download_entry(name, entry, config)
 
     def run_youtube_dl(self, args):
         # this is the only way to use the youtube-dl config file, if you
@@ -62,35 +63,27 @@ class SubscriptionDownloader(youtube_dl.YoutubeDL):
                 if err.code != 0:
                     raise YoutubeDLError(err.code)
 
-    def download_entry(self, entry):
+    def download_entry(self, name, entry, config):
         args = []
-        args.extend(['--output', os.path.join(self.config['download-folder'], self.name, youtube_dl.utils.DEFAULT_OUTTMPL)])
-        extra_args = shlex.split(self.config['extra-args'])
+        args.extend(['--output', os.path.join(config['download-folder'], name, youtube_dl.utils.DEFAULT_OUTTMPL)])
+        extra_args = shlex.split(config['extra-args'])
         args.extend(extra_args)
         args.extend(['--', entry['url']])
         self.run_youtube_dl(args)
-        register_last_download(self.name, entry['url'])
+        self.register_last_download(name, entry['url'])
 
+    def load_last_downloads(self):
+        if os.path.exists(self.lasts_filename):
+            with open(self.lasts_filename, 'rt') as f:
+                return json.load(f)
+        else:
+            return {}
 
-def load_last_downloads():
-    if os.path.exists(lasts_filename):
-        with open(lasts_filename, 'rt') as f:
-            return json.load(f)
-    else:
-        return {}
-
-
-def register_last_download(name, url):
-    info = load_last_downloads()
-    info[name] = url
-    with open(lasts_filename, 'wt') as f:
-        json.dump(info, f)
-
-
-def process_subscription(name, config):
-    print('Processing subscription "{}"'.format(name))
-    dl = SubscriptionDownloader(name, config)
-    dl.download_subscription()
+    def register_last_download(self, name, url):
+        info = self.load_last_downloads()
+        info[name] = url
+        with open(self.lasts_filename, 'wt') as f:
+            json.dump(info, f)
 
 
 def build_config():
@@ -106,10 +99,11 @@ def main():
 
     config = build_config()
     config.read(config_filename)
+    dl = SubscriptionDownloader(config)
     for name in config:
         if name == 'DEFAULT':
             continue
-        process_subscription(name, config[name])
+        dl.download_subscription(name)
 
 if __name__ == '__main__':
     main()
