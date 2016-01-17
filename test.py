@@ -95,6 +95,21 @@ class TestMediaSubs(unittest.TestCase):
         self.download_subs(2, 3, 4)
         dl_mock.assert_called_once_with(*entry(4))
 
+    def test_deleted(self):
+        """Test with deleded videos"""
+
+        entry = self.entry
+        call_entry = self.call_entry
+        dl_mock = self.dl_mock
+        self.download_subs(1)
+        dl_mock.assert_called_once_with(*entry(1))
+        self.download_subs(1, 2, 3)
+        dl_mock.assert_has_calls([call_entry(2), call_entry(3)])
+
+        dl_mock.reset_mock()
+        self.download_subs(1, 2, 4)
+        dl_mock.assert_called_once_with(*entry(4))
+
 
 if __name__ == '__main__':
     unittest.main()
