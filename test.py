@@ -22,7 +22,6 @@ class PlaylistIE(InfoExtractor):
 
 
 lasts_filename = 'test_lasts.json'
-db_filename = 'test_db.db'
 db_filename = ':memory:'
 
 test_files = [lasts_filename, lasts_filename + '.backup']
