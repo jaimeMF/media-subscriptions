@@ -1,3 +1,4 @@
+import argparse
 import configparser
 import datetime
 import itertools
@@ -111,15 +112,31 @@ def build_config():
     return configparser.ConfigParser(defaults=defaults)
 
 
+def build_argparser():
+    parser = argparse.ArgumentParser(APP_NAME)
+    parser.add_argument('subscriptions', metavar='SUBSCRIPTION', nargs='*', help='Specify a subscription to download')
+    parser.add_argument('--list-subs', help='Print the subscriptions', action='store_true')
+    return parser
+
+
 def main():
+    parser = build_argparser()
+    args = parser.parse_args()
     config_filename = os.path.join(xdg.BaseDirectory.load_first_config(APP_NAME), 'config')
 
     config = build_config()
     config.read(config_filename)
     dl = SubscriptionDownloader(config)
-    for name in config:
-        if name == 'DEFAULT':
-            continue
+    subscriptions = (name for name in config if name != 'DEFAULT')
+
+    if args.list_subs:
+        for name in subscriptions:
+            print(name)
+        return
+
+    if args.subscriptions:
+        subscriptions = args.subscriptions
+    for name in subscriptions:
         dl.download_subscription(name)
 
 if __name__ == '__main__':
