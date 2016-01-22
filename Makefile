@@ -7,9 +7,9 @@ RST_OPTIONS = --strict
 HTML_DOCS = media-subscriptions.html README.html
 MANPAGES = media-subscriptions.1
 DOCS = $(MANPAGES) $(HTML_DOCS)
-DISTFILES = $(DOCS)
+DISTFILES = $(DOCS) media-subscriptions.fish
 
-all: $(DOCS)
+all: $(DISTFILES)
 
 dist: sdist wheel
 
@@ -20,7 +20,7 @@ wheel: $(DISTFILES)
 	$(PYTHON) setup.py bdist_wheel
 
 clean:
-	rm -rf $(DOCS) build dist ./*.egg-info
+	rm -rf $(DISTFILES) build dist ./*.egg-info
 
 .SUFFIXES: .rst .html .1
 
@@ -29,3 +29,13 @@ clean:
 
 .rst.html:
 	rst2html.py $(RST_OPTIONS) $< | sed 's:\.rst:\.html:g' > $@
+
+VENV = VENV_BUILD/bin/activate
+VENV_ACTIVATE = source $(VENV)
+
+$(VENV):
+	virtualenv -p $(PYTHON) $$(dirname $$(dirname $@))
+	$(VENV_ACTIVATE); pip install -e .
+
+media-subscriptions.fish: devscripts/fish_completion.py media_subscriptions.py $(VENV)
+	$(VENV_ACTIVATE); python devscripts/fish_completion.py $@
