@@ -32,6 +32,7 @@ class SubscriptionDownloader(youtube_dl.YoutubeDL):
         super().__init__({}, auto_init=False)
 
         self.add_info_extractor(ydl_ies.YoutubeUserIE())
+        self.add_info_extractor(ydl_ies.YoutubeChannelIE())
 
     @property
     def db(self):
