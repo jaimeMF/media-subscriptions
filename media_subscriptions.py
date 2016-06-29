@@ -104,6 +104,20 @@ class SubscriptionDownloader(youtube_dl.YoutubeDL):
         with self.db as db:
             db.execute('INSERT INTO downloaded VALUES (?, ?, ?)', (name, url, datetime.datetime.now()))
 
+    def clean_db(self, names):
+        N = 10
+        with self.db as db:
+            deleted_entries = False
+            for name in names:
+                if db.execute('SELECT count(*) from downloaded WHERE subscription=?', (name,)).fetchone()[0] > N:
+                    to_delete = db.execute('SELECT url FROM downloaded WHERE subscription=? ORDER BY date', (name,)).fetchall()[:-N]
+                    print('Deleting {} entries from "{}"'.format(len(to_delete), name))
+                    db.executemany('DELETE FROM downloaded WHERE subscription=? AND url=?', [(name, url) for (url,) in to_delete])
+                    deleted_entries = True
+
+            if deleted_entries:
+                print('Compacting database')
+                db.execute('VACUUM')
 
 def build_config():
     defaults = {
@@ -117,6 +131,7 @@ def build_argparser():
     parser = argparse.ArgumentParser(APP_NAME)
     parser.add_argument('subscriptions', metavar='SUBSCRIPTION', nargs='*', help='Specify a subscription to download')
     parser.add_argument('--list-subs', help='Print the subscriptions', action='store_true')
+    parser.add_argument('--clean-db', help='Delete old entries from the downloads database', action='store_true')
     return parser
 
 
@@ -137,6 +152,11 @@ def main():
 
     if args.subscriptions:
         subscriptions = args.subscriptions
+
+    if args.clean_db:
+        dl.clean_db(subscriptions)
+        return
+
     for name in subscriptions:
         dl.download_subscription(name)
 
