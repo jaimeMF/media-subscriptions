@@ -119,6 +119,7 @@ class SubscriptionDownloader(youtube_dl.YoutubeDL):
                 print('Compacting database')
                 db.execute('VACUUM')
 
+
 def build_config():
     defaults = {
         'download-folder': os.path.expanduser('~/Movies/subscriptions'),
