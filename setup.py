@@ -22,6 +22,7 @@ setup(
     install_requires=[
         'youtube_dl',
         'pyxdg',
+        'colorama',
     ],
     classifiers=[
         'Topic :: Multimedia :: Video',

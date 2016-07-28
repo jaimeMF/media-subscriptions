@@ -1,17 +1,22 @@
 import argparse
+import concurrent.futures
 import configparser
 import datetime
 import itertools
 import json
+import logging
 import os
 import shlex
 import sqlite3
+import threading
 import unittest.mock
 
 import youtube_dl
 import youtube_dl.utils
 import youtube_dl.extractor as ydl_ies
 import xdg.BaseDirectory
+import colorama
+from colorama import Fore
 
 
 APP_NAME = 'media-subscriptions'
@@ -26,19 +31,20 @@ class YoutubeDLError(Exception):
 class SubscriptionDownloader(youtube_dl.YoutubeDL):
     def __init__(self, config):
         self.config = config
+        logging.basicConfig(level=logging.DEBUG, format=Fore.GREEN + '[{threadName:^20}]' + Fore.RESET + ' {message}', style='{')
+        self.logger = logging.getLogger(APP_NAME)
         self.db_filename = os.path.join(xdg.BaseDirectory.xdg_data_home, APP_NAME, 'media-subscriptions.db')
-        self._db = None
+        self.localdata = threading.local()
         self.lasts_filename = os.path.join(os.path.dirname(self.db_filename), 'last.json')
-        super().__init__({}, auto_init=False)
+        super().__init__({'logger': self.logger}, auto_init=False)
 
         self.add_info_extractor(ydl_ies.YoutubeUserIE())
         self.add_info_extractor(ydl_ies.YoutubeChannelIE())
 
     @property
     def db(self):
-        db = self._db
-        if self._db is None:
-            db = self._db = sqlite3.connect(self.db_filename)
+        if not hasattr(self.localdata, 'db'):
+            db = self.localdata.db = sqlite3.connect(self.db_filename)
             if not db.execute('SELECT * FROM sqlite_master WHERE name="downloaded"').fetchall():
                 with db:
                     db.execute('CREATE TABLE downloaded (subscription text, url text, date timestamp)')
@@ -50,6 +56,8 @@ class SubscriptionDownloader(youtube_dl.YoutubeDL):
                         for name, url in info.items():
                             self.register_download(name, url)
                     os.rename(self.lasts_filename, self.lasts_filename + '.backup')
+        else:
+            db = self.localdata.db
         return db
 
     def process_ie_result(self, ie_result, download=True, extra_info={}):
@@ -60,6 +68,7 @@ class SubscriptionDownloader(youtube_dl.YoutubeDL):
             return super().process_ie_result(ie_result, download, extra_info)
 
     def extract_entries(self, name, config):
+        threading.current_thread().name = name
         all_entries = self.extract_info(config['url'])['entries']
         last_download = self.db.execute('SELECT * FROM downloaded WHERE subscription=? LIMIT 1', (name,)).fetchone()
         if last_download is None:
@@ -67,15 +76,19 @@ class SubscriptionDownloader(youtube_dl.YoutubeDL):
             entries = [next(all_entries)]
         else:
             entries = list(itertools.takewhile(lambda x: not self.is_downloaded(name, x['url']), all_entries))[::-1]
-            print('Downloading {} videos'.format(len(entries)))
         return entries
 
-    def download_subscription(self, name):
-        print('Processing subscription "{}"'.format(name))
-        config = self.config[name]
-        entries = self.extract_entries(name, config)
-        for entry in entries:
-            self.download_entry(name, entry, config)
+    def download_subscriptions(self, names):
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            def fn(name):
+                cfg = self.config[name]
+                return name, cfg, self.extract_entries(name, cfg)
+            futures = [executor.submit(fn, name) for name in names]
+            for future in concurrent.futures.as_completed(futures):
+                name, config, entries = future.result()
+                print('Downloading {} videos from "{}"'.format(len(entries), name))
+                for entry in entries:
+                    self.download_entry(name, entry, config)
 
     def run_youtube_dl(self, args):
         # this is the only way to use the youtube-dl config file, if you
@@ -137,6 +150,8 @@ def build_argparser():
 
 
 def main():
+    colorama.init()
+
     parser = build_argparser()
     args = parser.parse_args()
     config_filename = os.path.join(xdg.BaseDirectory.load_first_config(APP_NAME), 'config')
@@ -158,8 +173,7 @@ def main():
         dl.clean_db(subscriptions)
         return
 
-    for name in subscriptions:
-        dl.download_subscription(name)
+    dl.download_subscriptions(subscriptions)
 
 if __name__ == '__main__':
     main()

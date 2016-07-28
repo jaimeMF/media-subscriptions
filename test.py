@@ -22,9 +22,9 @@ class PlaylistIE(InfoExtractor):
 
 
 lasts_filename = 'test_lasts.json'
-db_filename = ':memory:'
+db_filename = 'test_db.db'
 
-test_files = [lasts_filename, lasts_filename + '.backup']
+test_files = [db_filename, lasts_filename, lasts_filename + '.backup']
 
 
 class TestMediaSubs(unittest.TestCase):
@@ -50,7 +50,7 @@ class TestMediaSubs(unittest.TestCase):
 
     def download_subs(self, *ns):
         self.config['test']['url'] = 'pl:{}'.format(','.join(map(str, ns)))
-        self.dl.download_subscription('test')
+        self.dl.download_subscriptions(['test'])
 
     def entry(self, n):
         return 'test', {'url': 't:{}'.format(n)}, self.config['test']
