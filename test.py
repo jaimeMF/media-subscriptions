@@ -109,6 +109,16 @@ class TestMediaSubs(unittest.TestCase):
         self.download_subs(1, 2, 4)
         dl_mock.assert_called_once_with(*entry(4))
 
+    def test_clean_db(self):
+        call_entry = self.call_entry
+        dl_mock = self.dl_mock
+        self.download_subs(1)
+        self.download_subs(*list(range(20)))
+        dl_mock.reset_mock()
+        self.dl.clean_db(['test'])
+        self.download_subs(*list(range(22)))
+        dl_mock.assert_has_calls([call_entry(20), call_entry(21)])
+
 
 if __name__ == '__main__':
     unittest.main()
