@@ -117,6 +117,11 @@ class SubscriptionDownloader(youtube_dl.YoutubeDL):
         with self.db as db:
             db.execute('INSERT INTO downloaded VALUES (?, ?, ?)', (name, url, datetime.datetime.now()))
 
+    def compact_db(self):
+        print('Compacting database')
+        with self.db as db:
+            db.execute('VACUUM')
+
     def clean_db(self, names):
         N = 10
         with self.db as db:
@@ -129,8 +134,15 @@ class SubscriptionDownloader(youtube_dl.YoutubeDL):
                     deleted_entries = True
 
             if deleted_entries:
-                print('Compacting database')
-                db.execute('VACUUM')
+                self.compact_db()
+
+    def delete(self, names):
+        if names:
+            with self.db as db:
+                for name in names:
+                    print('Deleting "{}"'.format(name))
+                    db.execute('DELETE FROM downloaded WHERE subscription=?', (name,))
+                self.compact_db()
 
 
 def build_config():
@@ -146,6 +158,7 @@ def build_argparser():
     parser.add_argument('subscriptions', metavar='SUBSCRIPTION', nargs='*', help='Specify a subscription to download')
     parser.add_argument('--list-subs', help='Print the subscriptions', action='store_true')
     parser.add_argument('--clean-db', help='Delete old entries from the downloads database', action='store_true')
+    parser.add_argument('--delete', help='Delete subscription from the database', action='store_true')
     return parser
 
 
@@ -171,6 +184,10 @@ def main():
 
     if args.clean_db:
         dl.clean_db(subscriptions)
+        return
+
+    if args.delete:
+        dl.delete(args.subscriptions)
         return
 
     dl.download_subscriptions(subscriptions)
