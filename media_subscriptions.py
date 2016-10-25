@@ -157,8 +157,9 @@ def build_argparser():
     parser = argparse.ArgumentParser(APP_NAME)
     parser.add_argument('subscriptions', metavar='SUBSCRIPTION', nargs='*', help='Specify a subscription to download')
     parser.add_argument('--list-subs', help='Print the subscriptions', action='store_true')
-    parser.add_argument('--clean-db', help='Delete old entries from the downloads database', action='store_true')
-    parser.add_argument('--delete', help='Delete subscription from the database', action='store_true')
+    rm_group = parser.add_mutually_exclusive_group()
+    rm_group.add_argument('--clean-db', help='Delete old entries from the downloads database', action='store_true')
+    rm_group.add_argument('--delete', help='Delete subscription from the database', action='store_true')
     return parser
 
 
