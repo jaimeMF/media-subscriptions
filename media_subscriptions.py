@@ -124,8 +124,8 @@ class SubscriptionDownloader(youtube_dl.YoutubeDL):
 
     def clean_db(self, names):
         N = 10
+        deleted_entries = False
         with self.db as db:
-            deleted_entries = False
             for name in names:
                 if db.execute('SELECT count(*) from downloaded WHERE subscription=?', (name,)).fetchone()[0] > N:
                     to_delete = db.execute('SELECT url FROM downloaded WHERE subscription=? ORDER BY date', (name,)).fetchall()[:-N]
@@ -133,8 +133,8 @@ class SubscriptionDownloader(youtube_dl.YoutubeDL):
                     db.executemany('DELETE FROM downloaded WHERE subscription=? AND url=?', [(name, url) for (url,) in to_delete])
                     deleted_entries = True
 
-            if deleted_entries:
-                self.compact_db()
+        if deleted_entries:
+            self.compact_db()
 
     def delete(self, names):
         if names:
@@ -142,7 +142,7 @@ class SubscriptionDownloader(youtube_dl.YoutubeDL):
                 for name in names:
                     print('Deleting "{}"'.format(name))
                     db.execute('DELETE FROM downloaded WHERE subscription=?', (name,))
-                self.compact_db()
+            self.compact_db()
 
 
 def build_config():
